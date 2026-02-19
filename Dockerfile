@@ -1,7 +1,7 @@
 # Build biliup's web-ui
 FROM node:lts AS webui-builder
-ARG repo_url=https://github.com/biliup/biliup
-ARG branch_name=master
+ARG repo_url=https://github.com/spicyhot11/biliup.git
+ARG branch_name=dev1
 
 COPY . /biliup
 
