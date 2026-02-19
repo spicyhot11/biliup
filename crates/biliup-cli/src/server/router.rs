@@ -5,8 +5,8 @@ use crate::server::api::endpoints::{
     add_upload_streamer_endpoint, add_user_endpoint, delete_streamers_endpoint,
     delete_template_endpoint, delete_user_endpoint, get_configuration, get_qrcode, get_status,
     get_streamer_info, get_streamer_info_files, get_streamers_endpoint,
-    get_upload_streamer_endpoint, get_upload_streamers_endpoint, get_users_endpoint, get_videos,
-    login_by_qrcode, pause_streamers_endpoint, post_streamers_endpoint, post_uploads,
+    get_upload_streamer_endpoint, get_upload_streamers_endpoint, get_users_endpoint, get_video_tree,
+    get_videos, login_by_qrcode, pause_streamers_endpoint, post_streamers_endpoint, post_uploads,
     put_configuration, put_streamers_endpoint,
 };
 use crate::server::infrastructure::service_register::ServiceRegister;
@@ -56,7 +56,8 @@ pub fn router(service_register: ServiceRegister) -> Router<()> {
         .route("/v1/get_qrcode", get(get_qrcode)) // 获取二维码
         .route("/v1/login_by_qrcode", post(login_by_qrcode)) // 二维码登录
         // 视频文件管理路由
-        .route("/v1/videos", get(get_videos)) // 获取视频列表
+        .route("/v1/videos", get(get_videos)) // 获取视频列表（平铺）
+        .route("/v1/video-tree", get(get_video_tree)) // 获取视频目录树
         .route("/v1/status", get(get_status))
         .route("/v1/uploads", post(post_uploads))
         .route_service("/static/{path}", get(using_serve_file_from_a_route))

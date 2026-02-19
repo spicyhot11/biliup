@@ -12,11 +12,11 @@ import {
   Transfer,
 } from '@douyinfe/semi-ui'
 import { IconCloudStroked, IconPlusCircle, IconUserListStroked } from '@douyinfe/semi-icons'
-import { SetStateAction, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { Card } from '@douyinfe/semi-ui'
 import { IconEdit2Stroked, IconSendStroked, IconDeleteStroked } from '@douyinfe/semi-icons'
-import { fetcher, FileList, requestDelete, sendRequest, StudioEntity } from '../../lib/api-streamer'
+import { fetcher, VideoTreeNode, requestDelete, sendRequest, StudioEntity } from '../../lib/api-streamer'
 import useSWR from 'swr'
 import { useRouter } from 'next/navigation'
 import UserList from '../../ui/UserList'
@@ -79,20 +79,10 @@ export default function Union() {
   const handleAfterClose = () => {
     console.log('After Close callback executed')
   }
-  const { data: fileList } = useSWR<FileList[]>('/v1/videos', fetcher)
-  const data = fileList?.map(v => {
-    return {
-      label: v.name,
-      value: v.name,
-      disabled: false,
-      key: v.key,
-    }
-  })
-  const [transferData, setTransferData] = useState<(string | number)[]>([])
+  const { data: videoTree } = useSWR<VideoTreeNode[]>('/v1/video-tree', fetcher)
 
-  const handleTransferChange = (values: (string | number)[], items: any[]) => {
+  const handleTransferChange = (values: (string | number)[]) => {
     setSelectFiles(values)
-    setTransferData(values)
   }
 
   return (
@@ -108,15 +98,15 @@ export default function Union() {
         afterClose={handleAfterClose}
         onCancel={handleCancel}
         bodyStyle={{
-            overflow: 'auto',
+          overflow: 'auto',
         }}
         closeOnEsc={true}
       >
         <Transfer
+          type="treeList"
           style={{ height: 416 }}
-          dataSource={data}
-          draggable
-          value={transferData}
+          dataSource={videoTree ?? []}
+          value={selectFiles}
           onChange={handleTransferChange}
         />
       </Modal>
@@ -238,7 +228,7 @@ export default function Union() {
                     content="此操作将不可逆"
                     margin={50}
                     onConfirm={async () => await onConfirm(item.id)}
-                    // onCancel={onCancel}
+                  // onCancel={onCancel}
                   >
                     <Button theme="borderless" icon={<IconDeleteStroked />}></Button>
                   </Popconfirm>

@@ -104,8 +104,8 @@ export interface LiveStreamerEntity {
 	upload_status?: string;
 	statusTag?: React.ReactNode;
 	format?: string;
-    time_range?: string | Date[];
-    excluded_keywords?: string[];
+	time_range?: string | Date[];
+	excluded_keywords?: string[];
 	preprocessor?: Record<'run', string>[];
 	segment_processor?: Record<'run', string>[];
 	downloaded_processor?: Record<'run', string>[];
@@ -133,4 +133,11 @@ export interface FileList {
 	name: string;
 	updateTime: number;
 	size: number;
+}
+
+export interface VideoTreeNode {
+	key: string;
+	label: string;
+	value: string;
+	children?: VideoTreeNode[];
 }

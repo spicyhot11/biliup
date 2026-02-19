@@ -29,6 +29,7 @@ use error_stack::{Report, ResultExt};
 use ormlite::{Insert, Model};
 use serde::Deserialize;
 use serde_json::json;
+use std::io;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, UNIX_EPOCH};
@@ -508,6 +509,79 @@ pub async fn get_videos() -> Result<Json<Vec<serde_json::Value>>, Response> {
     Ok(Json(file_list))
 }
 
+/// 媒体文件后缀白名单
+const MEDIA_EXTENSIONS: &[&str] = &["mp4", "flv", "3gp", "webm", "mkv", "ts"];
+/// 跳过的目录名
+const SKIP_DIRS: &[&str] = &["data", "node_modules", "out", "__pycache__", ".next"];
+
+/// 递归扫描目录，返回树形结构供前端文件选择使用
+pub async fn get_video_tree() -> Result<Json<Vec<serde_json::Value>>, Response> {
+    let base = PathBuf::from(".");
+    let tree = tokio::task::spawn_blocking(move || scan_dir(&base, &base))
+        .await
+        .map_err(|e| {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("扫描目录失败: {e}")).into_response()
+        })?
+        .map_err(|e| {
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("扫描目录失败: {e}")).into_response()
+        })?;
+    Ok(Json(tree))
+}
+
+/// 递归扫描目录辅助函数
+fn scan_dir(dir: &std::path::Path, base: &std::path::Path) -> io::Result<Vec<serde_json::Value>> {
+    let mut nodes = Vec::new();
+    let mut entries: Vec<_> = std::fs::read_dir(dir)?
+        .filter_map(|e| e.ok())
+        .collect();
+    // 按文件名排序，保持稳定的展示顺序
+    entries.sort_by_key(|e| e.file_name());
+
+    for entry in entries {
+        let path = entry.path();
+        let file_name = entry.file_name().to_string_lossy().into_owned();
+
+        // 跳过隐藏文件/目录（以 . 开头）
+        if file_name.starts_with('.') {
+            continue;
+        }
+
+        let metadata = entry.metadata()?;
+
+        if metadata.is_dir() {
+            // 跳过特定目录
+            if SKIP_DIRS.contains(&file_name.as_str()) {
+                continue;
+            }
+            // 递归扫描子目录
+            let children = scan_dir(&path, base)?;
+            // 只返回包含媒体文件的目录
+            if !children.is_empty() {
+                let rel_path = path.strip_prefix(base).unwrap_or(&path);
+                nodes.push(serde_json::json!({
+                    "key": rel_path.to_string_lossy(),
+                    "label": file_name,
+                    "value": rel_path.to_string_lossy(),
+                    "children": children,
+                }));
+            }
+        } else if metadata.is_file() {
+            // 检查文件后缀是否为媒体格式
+            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                if MEDIA_EXTENSIONS.iter().any(|allowed| ext.eq_ignore_ascii_case(allowed)) {
+                    let rel_path = path.strip_prefix(base).unwrap_or(&path);
+                    nodes.push(serde_json::json!({
+                        "key": rel_path.to_string_lossy(),
+                        "label": file_name,
+                        "value": rel_path.to_string_lossy(),
+                    }));
+                }
+            }
+        }
+    }
+    Ok(nodes)
+}
+
 // #[axum::debug_handler(state = ServiceRegister)]
 pub async fn get_status(
     State(service_register): State<ServiceRegister>,
@@ -546,6 +620,42 @@ pub async fn post_uploads(
     State(config): State<Arc<RwLock<Config>>>,
     Json(json_data): Json<PostUploads>,
 ) -> Result<Json<serde_json::Value>, Response> {
+    // === 路径安全校验 ===
+    let cwd = std::env::current_dir()
+        .change_context(AppError::Unknown)
+        .map_err(report_to_response)?;
+    for file_path in &json_data.files {
+        // 拒绝绝对路径
+        if file_path.is_absolute() {
+            return Err(
+                (StatusCode::BAD_REQUEST, "不允许使用绝对路径").into_response()
+            );
+        }
+        // 拒绝包含 ".." 的路径分量
+        for component in file_path.components() {
+            if matches!(component, std::path::Component::ParentDir) {
+                return Err(
+                    (StatusCode::FORBIDDEN, "路径越权：不允许使用 ..").into_response()
+                );
+            }
+        }
+        // 拼接完整路径并验证文件存在且在工作目录内
+        let full_path = cwd.join(file_path);
+        let canonical = full_path.canonicalize().map_err(|_| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("文件不存在: {}", file_path.display()),
+            )
+                .into_response()
+        })?;
+        if !canonical.starts_with(&cwd) {
+            return Err(
+                (StatusCode::FORBIDDEN, "路径越权").into_response()
+            );
+        }
+    }
+    // === 安全校验结束 ===
+
     let upload_config = json_data.params;
     let (line, limit, submit_api) = {
         let config = config.read().unwrap();
