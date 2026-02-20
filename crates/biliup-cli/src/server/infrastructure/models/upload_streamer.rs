@@ -54,6 +54,8 @@ pub struct UploadStreamer {
     pub up_close_danmu: Option<bool>,
     /// 额外字段
     pub extra_fields: Option<String>,
+    /// 独立投稿模式（1=每个文件独立投稿，0或None=分P模式）
+    pub independent_upload: Option<u8>,
 }
 
 /// 插入上传配置的数据结构
@@ -85,4 +87,5 @@ pub struct InsertUploadStreamer {
     pub up_close_danmu: Option<u8>,
     pub extra_fields: Option<String>,
     pub is_only_self: Option<u8>,
+    pub independent_upload: Option<u8>,
 }

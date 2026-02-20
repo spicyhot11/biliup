@@ -219,6 +219,15 @@ const TemplateFields: React.FC<FormFCChild<StudioEntity & { isDtime: boolean }>>
             </div>
           }
         />
+        <Switch
+          field="independent_upload"
+          label="独立投稿"
+          extraText={
+            <div style={{ fontSize: 14 }}>
+              开启后每个文件将独立投稿，以文件名作为稿件标题
+            </div>
+          }
+        />
         <RadioGroup
           field="copyright"
           label="类型"

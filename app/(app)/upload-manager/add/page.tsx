@@ -79,6 +79,7 @@ export default function Add() {
                 credits: values.credits,
                 uploader: values.uploader,
                 extra_fields: values.extra_fields ?? '',
+                independent_upload: values.independent_upload ? 1 : 0,
               }
 
               const result = await trigger(studioEntity)

@@ -87,6 +87,7 @@ export interface StudioEntity {
 	up_close_reply: number;
 	up_close_danmu: number;
 	charging_pay: number;
+	independent_upload: number;
 	credits: Credit[];
 	uploader: string;
 	extra_fields?: string;

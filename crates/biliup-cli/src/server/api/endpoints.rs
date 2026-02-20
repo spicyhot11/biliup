@@ -35,7 +35,7 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, UNIX_EPOCH};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
-use tracing::info;
+use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
 pub async fn get_streamers_endpoint(
@@ -657,6 +657,7 @@ pub async fn post_uploads(
     // === 安全校验结束 ===
 
     let upload_config = json_data.params;
+    let is_independent = upload_config.independent_upload == Some(1);
     let (line, limit, submit_api) = {
         let config = config.read().unwrap();
         let line = UploadLine::from_str(&config.lines, true).ok();
@@ -664,34 +665,95 @@ pub async fn post_uploads(
         let submit_api = config.submit_api.clone();
         (line, limit, submit_api)
     };
-    info!("通过页面开始上传");
+    info!("通过页面开始上传, 独立投稿模式: {}", is_independent);
     tokio::spawn(async move {
-        let (bilibili, videos) = upload(
-            upload_config
+        if is_independent {
+            // === 独立投稿模式：每个文件单独投稿 ===
+            let cookie_file = upload_config
                 .user_cookie
                 .as_deref()
-                .unwrap_or("cookies.json"),
-            None,
-            line,
-            &json_data.files,
-            limit as usize,
-        )
-        .await?;
-        if !videos.is_empty() {
-            let recorder = Recorder::new(
-                upload_config.title.clone(),
-                StreamerInfo::new(
-                    &upload_config.template_name,
-                    "stream_title",
-                    "",
-                    Utc::now(),
-                    "",
-                ),
-            );
-            let studio = build_studio(&upload_config, &bilibili, videos, &recorder).await?;
-            let response_data =
-                submit_to_bilibili(&bilibili, &studio, submit_api.as_deref()).await?;
-            info!("通过页面上传成功 {:?}", response_data);
+                .unwrap_or("cookies.json")
+                .to_string();
+            for file_path in &json_data.files {
+                let file_title = file_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("untitled")
+                    .to_string();
+                info!("独立投稿: 开始上传文件 {:?}, 标题: {}", file_path, file_title);
+
+                let result: Result<(), Report<AppError>> = async {
+                    let (bilibili, videos) = upload(
+                        &cookie_file,
+                        None,
+                        line.clone(),
+                        &[file_path.clone()],
+                        limit as usize,
+                    )
+                    .await?;
+                    if !videos.is_empty() {
+                        let mut config_for_file = upload_config.clone();
+                        config_for_file.title = Some(file_title.clone());
+                        let recorder = Recorder::new(
+                            config_for_file.title.clone(),
+                            StreamerInfo::new(
+                                &config_for_file.template_name,
+                                "stream_title",
+                                "",
+                                Utc::now(),
+                                "",
+                            ),
+                        );
+                        let studio = build_studio(
+                            &config_for_file,
+                            &bilibili,
+                            videos,
+                            &recorder,
+                        )
+                        .await?;
+                        let response_data =
+                            submit_to_bilibili(&bilibili, &studio, submit_api.as_deref()).await?;
+                        info!("独立投稿成功: {} {:?}", file_title, response_data);
+                    }
+                    Ok(())
+                }
+                .await;
+
+                if let Err(e) = result {
+                    error!("独立投稿失败: {} - {}", file_title, e);
+                    // 继续处理后续文件
+                }
+            }
+        } else {
+            // === 分P模式：所有文件合并为一个稿件 ===
+            let (bilibili, videos) = upload(
+                upload_config
+                    .user_cookie
+                    .as_deref()
+                    .unwrap_or("cookies.json"),
+                None,
+                line,
+                &json_data.files,
+                limit as usize,
+            )
+            .await?;
+            if !videos.is_empty() {
+                let recorder = Recorder::new(
+                    upload_config.title.clone(),
+                    StreamerInfo::new(
+                        &upload_config.template_name,
+                        "stream_title",
+                        "",
+                        Utc::now(),
+                        "",
+                    ),
+                );
+                let studio =
+                    build_studio(&upload_config, &bilibili, videos, &recorder).await?;
+                let response_data =
+                    submit_to_bilibili(&bilibili, &studio, submit_api.as_deref()).await?;
+                info!("通过页面上传成功 {:?}", response_data);
+            }
         }
         Ok::<_, Report<AppError>>(())
     });

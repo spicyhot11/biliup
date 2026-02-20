@@ -60,6 +60,7 @@ const Edit = () => {
     charging_pay: data.charging_pay === 1,
     no_reprint: data.no_reprint === 1,
     is_only_self: data.is_only_self === 1,
+    independent_upload: data.independent_upload === 1,
     isDtime: data.dtime ? true : false,
   }
   return (
@@ -95,6 +96,7 @@ const Edit = () => {
                 credits: values?.credits ?? null,
                 uploader: values?.uploader ?? null,
                 extra_fields: values?.extra_fields ?? '',
+                independent_upload: values?.independent_upload ? 1 : 0,
               }
               const result = await trigger(studioEntity)
               await mutate(result)
